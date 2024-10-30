@@ -1,0 +1,69 @@
+﻿version: '3.4'
+
+services:
+  configurationapi:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MONGO_CONNECTION_STRING=mongodb://mongodb_config:27017/configDB
+      - REDIS_CONNECTION_STRING=redis_config:6379
+      - RABBITMQ_CONNECTION_STRING=amqp://guest:guest@rabbitmq:5672/
+    image: ${DOCKER_REGISTRY-}configurationapi
+    ports:
+      - "7002:8082"
+      - "7003:8083"
+    build:
+      context: .
+      dockerfile: ConfigurationApi/Dockerfile
+    depends_on:
+      - mongodb_config
+      - redis_config
+    networks:
+      - my_network
+
+  exampleservice:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MONGO_CONNECTION_STRING=mongodb://mongodb_config:27017/configDB
+      - REDIS_CONNECTION_STRING=redis_config:6379
+    image: ${DOCKER_REGISTRY-}exampleservice
+    ports:
+      - "7000:8080"
+      - "7001:8081"
+    build:
+      context: .
+      dockerfile: ExampleService/Dockerfile
+    depends_on:
+      - mongodb_config
+      - redis_config
+    networks:
+      - my_network
+
+  mongodb_config:
+    image: mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo_data_config:/data/db
+    networks:
+      - my_network
+
+  redis_config:
+    image: redis:6
+    ports:
+      - "6380:6379"
+    networks:
+      - my_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - my_network
+
+volumes:
+  mongo_data_config:
+  
+networks:
+  my_network:  
