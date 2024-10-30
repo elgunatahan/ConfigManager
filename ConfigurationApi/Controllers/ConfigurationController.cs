@@ -1,12 +1,15 @@
-﻿using ConfigurationApi.Entities;
+﻿using ConfigurationApi.Common;
+using ConfigurationApi.Entities;
 using ConfigurationApi.Events;
 using ConfigurationApi.Exceptions;
 using ConfigurationApi.Interfaces;
 using ConfigurationApi.Models.Requests;
 using ConfigurationApi.Models.Responses;
 using MassTransit;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace ConfigurationApi.Controllers
@@ -25,6 +28,8 @@ namespace ConfigurationApi.Controllers
         }
 
         [HttpPost]
+        [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(CreateConfigurationRecordResponse))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(DefaultExceptionDto))]
         public async Task<IActionResult> Create([FromBody] CreateConfigurationRecordRequest input)
         {
             if (!IsValidValue(input.Value, input.Type))
@@ -51,11 +56,14 @@ namespace ConfigurationApi.Controllers
             var endpoint = await _sendEndpointProvider.GetSendEndpoint(new Uri($"queue:config_created"));
             await endpoint.Send(configurationRecordCreated);
 
-            return Created($"api/v1/configurations/{config.IdentityObject.Id}", new { config.IdentityObject.Id });
+            return Created($"api/v1/configurations/{config.IdentityObject.Id}", new CreateConfigurationRecordResponse { Id = config.IdentityObject.Id });
 
         }
 
         [HttpPut("{id}")]
+        [ProducesResponseType(StatusCodes.Status202Accepted, Type = typeof(UpdateConfigurationRecordResponse))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(DefaultExceptionDto))]
+        [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(DefaultExceptionDto))]
         public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] UpdateConfigurationRecordRequest input)
         {
             if (!IsValidValue(input.Value, input.Type))
@@ -84,10 +92,12 @@ namespace ConfigurationApi.Controllers
             var endpoint = await _sendEndpointProvider.GetSendEndpoint(new Uri($"queue:config_updated"));
             await endpoint.Send(configurationRecordUpdated);
 
-            return Accepted($"api/v1/configurations/{config.IdentityObject.Id}", new { config.IdentityObject.Id });
+            return Accepted($"api/v1/configurations/{config.IdentityObject.Id}", new UpdateConfigurationRecordResponse { Id = config.IdentityObject.Id });
         }
 
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(GetConfigurationRecordResponse))]
+        [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(DefaultExceptionDto))]
         public async Task<IActionResult> Get([FromRoute] Guid id)
         {
             var config = await _configRepository.GetByIdAsync(id);
@@ -109,7 +119,31 @@ namespace ConfigurationApi.Controllers
             });
         }
 
+        [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(QueryConfigurationRecordsResponse))]
+        public async Task<IActionResult> GetAll([FromQuery] string environment, [FromQuery] string applicationName)
+        {
+            var configs = await _configRepository.GetAllByEnvironmentAsync(applicationName, environment);
+
+            return Ok(new QueryConfigurationRecordsResponse()
+            {
+                Items = configs.Select(x => new ConfigurationRecordItemResponse()
+                {
+                    Id = x.IdentityObject.Id,
+                    Version = x.IdentityObject.Version,
+                    ApplicationName = x.ApplicationName,
+                    Key = x.Key,
+                    Environment = x.Environment,
+                    Type = x.Type,
+                    Value = x.Value
+                }).ToList(),
+                TotalRecords = configs.Count()
+            });
+        }
+
         [HttpDelete("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(DefaultExceptionDto))]
         public async Task<IActionResult> Delete([FromRoute] Guid id)
         {
             var config = await _configRepository.GetByIdAsync(id);
